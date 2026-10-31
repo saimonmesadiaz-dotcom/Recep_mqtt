@@ -1,8 +1,9 @@
 """
-Lector de Sensor MQTT
----------------------
-App de Streamlit que se conecta a un broker MQTT, se suscribe a un tópico
-y muestra el último mensaje recibido en tarjetas de lectura.
+Centro de Comando · Telemetría MQTT
+-----------------------------------
+App de Streamlit con estética de base de comando espacial. Se conecta a un
+broker MQTT, se suscribe a un tópico y muestra el último mensaje recibido
+como paneles de telemetría.
 
 Ejecutar:  streamlit run app.py
 """
@@ -56,8 +57,8 @@ SENSOR_META = {
 # ═════════════════════════════════════════════════════════════════════════════
 def configurar_pagina() -> None:
     st.set_page_config(
-        page_title="Lector de Sensor MQTT",
-        page_icon="📡",
+        page_title="Centro de Comando · MQTT",
+        page_icon="🛰️",
         layout="centered",
     )
 
@@ -66,104 +67,246 @@ def inyectar_estilos() -> None:
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Nunito+Sans:wght@400;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap');
 
         :root {
-            --tinta:   #12263A;
-            --pizarra: #5B6B7A;
-            --niebla:  #EEF4F7;
-            --linea:   #D5E1E8;
-            --senal:   #14938E;
-            --senal-2: #0E6F6B;
-            --alerta:  #D9534F;
+            --espacio:   #050914;
+            --panel:     rgba(11, 22, 44, 0.78);
+            --cian:      #35E0F2;
+            --cian-tenue: rgba(53, 224, 242, 0.28);
+            --violeta:   #8B5CF6;
+            --texto:     #D6E6F5;
+            --apagado:   #7F96B2;
+            --alerta:    #FF5C6C;
+            --campo:     #0A1529;
         }
 
-        html, body, [class*="css"], .stApp {
-            font-family: 'Nunito Sans', sans-serif;
+        /* ── Fondo: nebulosa + campo de estrellas ───── */
+        .stApp {
+            background:
+                radial-gradient(ellipse at 15% 0%, rgba(139, 92, 246, .28), transparent 55%),
+                radial-gradient(ellipse at 95% 35%, rgba(53, 224, 242, .13), transparent 50%),
+                radial-gradient(ellipse at 40% 100%, rgba(255, 79, 216, .10), transparent 55%),
+                var(--espacio);
+            color: var(--texto);
+            font-family: 'Rajdhani', sans-serif;
         }
-        .stApp { background: var(--niebla); }
-        .block-container { padding-top: 2.5rem; max-width: 760px; }
+        .stApp::before, .stApp::after {
+            content: ""; position: fixed; inset: 0;
+            pointer-events: none; z-index: 0;
+        }
+        .stApp::before {
+            background-image:
+                radial-gradient(1px 1px at 20px 30px, #fff, transparent),
+                radial-gradient(1px 1px at 90px 140px, #cfe8ff, transparent),
+                radial-gradient(1.5px 1.5px at 160px 70px, #fff, transparent),
+                radial-gradient(1px 1px at 230px 190px, #b9d4ff, transparent);
+            background-size: 260px 220px;
+            opacity: .55;
+        }
+        .stApp::after {
+            background-image:
+                radial-gradient(1px 1px at 60px 90px, #fff, transparent),
+                radial-gradient(1.5px 1.5px at 190px 20px, #ffe9ff, transparent),
+                radial-gradient(1px 1px at 120px 200px, #fff, transparent);
+            background-size: 340px 280px;
+            animation: titilar 7s ease-in-out infinite alternate;
+        }
+        @keyframes titilar { from { opacity: .2; } to { opacity: .75; } }
 
-        h1, h2, h3, .titulo {
-            font-family: 'Sora', sans-serif !important;
-            color: var(--tinta);
-            letter-spacing: -0.01em;
+        [data-testid="stHeader"] { background: transparent; }
+        .block-container {
+            position: relative; z-index: 1;
+            padding-top: 2.5rem; max-width: 780px;
         }
 
-        /* ── Encabezado ─────────────────────────────── */
-        .encabezado {
-            display: flex; align-items: center; gap: 1rem;
-            margin-bottom: 0.25rem;
+        /* ── Texto base ─────────────────────────────── */
+        .stApp p, .stApp li, .stApp label, .stApp h1, .stApp h2, .stApp h3,
+        [data-testid="stWidgetLabel"] p, summary p {
+            color: var(--texto) !important;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.05rem;
         }
-        .encabezado .icono {
-            width: 54px; height: 54px; border-radius: 16px;
-            display: grid; place-items: center; font-size: 1.7rem;
-            background: var(--tinta); color: white;
+        .stApp h2, .stApp h3 {
+            font-family: 'Orbitron', sans-serif !important;
+            font-size: 1.05rem !important;
+            letter-spacing: .12em;
+            text-transform: uppercase;
         }
-        .encabezado h1 { margin: 0; padding: 0; font-size: 1.9rem; }
-        .subtitulo { color: var(--pizarra); margin: 0 0 1.5rem 0; }
+        [data-testid="stCaptionContainer"] p {
+            color: var(--apagado) !important; font-size: .95rem;
+        }
 
-        /* ── Chip del tópico ────────────────────────── */
-        .chip {
-            display: inline-flex; align-items: center; gap: .45rem;
-            padding: .3rem .8rem; border-radius: 999px;
-            background: white; border: 1px solid var(--linea);
-            color: var(--tinta); font-size: .85rem; font-weight: 600;
+        /* ── Encabezado con radar ───────────────────── */
+        .encabezado { display: flex; align-items: center; gap: 1.2rem; }
+        .radar {
+            flex: none; width: 66px; height: 66px; border-radius: 50%;
+            position: relative; overflow: hidden;
+            border: 1px solid var(--cian);
+            background: repeating-radial-gradient(
+                circle, transparent 0 9px, rgba(53, 224, 242, .22) 9px 10px);
+            box-shadow: 0 0 20px rgba(53, 224, 242, .4),
+                        inset 0 0 14px rgba(53, 224, 242, .25);
         }
+        .radar::before {
+            content: ""; position: absolute; inset: 0; border-radius: 50%;
+            background: conic-gradient(
+                from 0deg, rgba(53, 224, 242, .6), transparent 30%);
+            animation: barrido 4s linear infinite;
+        }
+        .radar::after {
+            content: ""; position: absolute; top: 17px; left: 41px;
+            width: 4px; height: 4px; border-radius: 50%;
+            background: #fff; box-shadow: 0 0 6px #fff;
+        }
+        @keyframes barrido { to { transform: rotate(360deg); } }
+
+        .titulo {
+            font-family: 'Orbitron', sans-serif; font-weight: 900;
+            font-size: 1.9rem; letter-spacing: .1em; text-transform: uppercase;
+            color: #fff; margin: 0; line-height: 1.1;
+            text-shadow: 0 0 18px rgba(53, 224, 242, .65);
+        }
+        .subtitulo {
+            color: var(--apagado); font-size: 1.1rem; font-weight: 500;
+            letter-spacing: .04em; margin: .25rem 0 0 0;
+        }
+
+        /* ── Indicador de enlace ────────────────────── */
+        .enlace {
+            display: inline-flex; align-items: center; gap: .6rem;
+            margin: 1.4rem 0 .4rem 0; padding: .4rem 1rem;
+            background: var(--panel); border: 1px solid var(--cian-tenue);
+            font-weight: 600; letter-spacing: .06em; color: var(--texto);
+            clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px,
+                               100% 100%, 10px 100%, 0 calc(100% - 10px));
+        }
+        .enlace .estado { color: var(--apagado); }
         .punto {
-            width: 8px; height: 8px; border-radius: 50%;
-            background: var(--senal);
+            width: 9px; height: 9px; border-radius: 50%;
+            background: var(--apagado);
         }
-        .punto.inactivo { background: #B8C4CC; }
-        .punto.error    { background: var(--alerta); }
+        .punto.activo {
+            background: #3DFFB0; box-shadow: 0 0 10px #3DFFB0;
+            animation: pulso 1.8s ease-in-out infinite;
+        }
+        .punto.error { background: var(--alerta); box-shadow: 0 0 10px var(--alerta); }
+        @keyframes pulso { 50% { opacity: .35; } }
 
-        /* ── Tarjetas de lectura ────────────────────── */
+        /* ── Paneles de telemetría ──────────────────── */
         .rejilla {
-            display: grid; gap: 1rem; margin: 1rem 0 .5rem 0;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            display: grid; gap: 1.1rem; margin: 1rem 0 .5rem 0;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         }
         .lectura {
-            background: white; border: 1px solid var(--linea);
-            border-radius: 18px; padding: 1.2rem 1.3rem;
-            border-top: 4px solid var(--senal);
+            position: relative; padding: 1.2rem 1.4rem 1.3rem;
+            background: linear-gradient(160deg,
+                rgba(18, 36, 70, .85), rgba(7, 14, 30, .92));
+            border: 1px solid var(--cian-tenue);
+            box-shadow: inset 0 0 28px rgba(53, 224, 242, .07);
+            clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px,
+                               100% 100%, 18px 100%, 0 calc(100% - 18px));
         }
+        .lectura::before, .lectura::after {
+            content: ""; position: absolute; width: 16px; height: 16px;
+            border: 2px solid var(--cian);
+            filter: drop-shadow(0 0 4px var(--cian));
+        }
+        .lectura::before { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+        .lectura::after  { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+
         .lectura .etiqueta {
-            color: var(--pizarra); font-size: .95rem; font-weight: 600;
-            display: flex; align-items: center; gap: .4rem;
+            display: flex; align-items: center; gap: .5rem;
+            color: var(--apagado); font-weight: 600; font-size: 1.05rem;
+            letter-spacing: .08em; text-transform: uppercase;
         }
         .lectura .valor {
-            font-family: 'Sora', sans-serif; font-weight: 700;
-            font-size: 2.2rem; color: var(--tinta); line-height: 1.15;
-            margin-top: .35rem;
+            font-family: 'Orbitron', sans-serif; font-weight: 700;
+            font-size: 2rem; color: #fff; margin-top: .5rem; line-height: 1.15;
+            text-shadow: 0 0 14px rgba(53, 224, 242, .6);
         }
         .lectura .unidad {
-            font-size: 1rem; font-weight: 500; color: var(--pizarra);
-            margin-left: .25rem;
+            font-family: 'Rajdhani', sans-serif; font-weight: 600;
+            font-size: 1.1rem; color: var(--cian);
+            margin-left: .35rem; text-shadow: none;
         }
 
-        /* ── Estados vacío / error ──────────────────── */
-        .vacio {
-            background: white; border: 1.5px dashed var(--linea);
-            border-radius: 18px; padding: 2.2rem 1.5rem;
-            text-align: center; color: var(--pizarra);
+        /* ── Sin señal / falla ──────────────────────── */
+        .vacio, .falla {
+            padding: 2.2rem 1.5rem; text-align: center;
+            color: var(--apagado); font-size: 1.1rem;
+            background: var(--panel);
+            border: 1px dashed var(--cian-tenue);
         }
-        .vacio strong { color: var(--tinta); display: block; margin-bottom: .3rem; }
+        .vacio strong, .falla strong {
+            display: block; margin-bottom: .35rem;
+            font-family: 'Orbitron', sans-serif; letter-spacing: .12em;
+            text-transform: uppercase; font-size: 1rem; color: var(--texto);
+        }
+        .falla { border: 1px solid rgba(255, 92, 108, .55);
+                 background: rgba(255, 92, 108, .08); }
+        .falla strong { color: var(--alerta); }
 
         /* ── Botón principal ────────────────────────── */
         .stButton > button {
-            background: var(--senal); color: white; border: none;
-            border-radius: 14px; padding: .75rem 1rem;
-            font-family: 'Sora', sans-serif; font-weight: 600;
-            transition: background .15s ease;
+            background: linear-gradient(90deg,
+                rgba(53, 224, 242, .18), rgba(139, 92, 246, .32));
+            border: 1px solid var(--cian); border-radius: 2px;
+            padding: .85rem 1rem;
+            box-shadow: 0 0 18px rgba(53, 224, 242, .25);
+            transition: box-shadow .2s ease, background .2s ease;
         }
-        .stButton > button:hover  { background: var(--senal-2); color: white; }
-        .stButton > button:focus-visible {
-            outline: 3px solid var(--tinta); outline-offset: 2px;
+        .stButton > button p {
+            color: #E8FBFF !important;
+            font-family: 'Orbitron', sans-serif; font-weight: 700;
+            letter-spacing: .16em; text-transform: uppercase;
+            font-size: .95rem;
         }
+        .stButton > button:hover {
+            border-color: #fff;
+            background: linear-gradient(90deg,
+                rgba(53, 224, 242, .32), rgba(139, 92, 246, .5));
+            box-shadow: 0 0 28px rgba(53, 224, 242, .55);
+        }
+        .stButton > button:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
 
         /* ── Barra lateral ──────────────────────────── */
         section[data-testid="stSidebar"] {
-            background: white; border-right: 1px solid var(--linea);
+            background: rgba(5, 10, 22, .96);
+            border-right: 1px solid var(--cian-tenue);
+        }
+        [data-baseweb="input"], [data-baseweb="base-input"] {
+            background: var(--campo) !important;
+            border-color: var(--cian-tenue) !important;
+            border-radius: 2px !important;
+        }
+        [data-baseweb="input"] input, [data-baseweb="base-input"] input {
+            color: var(--texto) !important; background: var(--campo) !important;
+            font-family: 'Rajdhani', sans-serif; font-size: 1.05rem;
+        }
+        [data-baseweb="input"]:focus-within {
+            border-color: var(--cian) !important;
+            box-shadow: 0 0 10px rgba(53, 224, 242, .4);
+        }
+        .stNumberInput button { background: var(--campo) !important; color: var(--texto) !important; }
+
+        /* ── Expanders, avisos y código ─────────────── */
+        [data-testid="stExpander"] {
+            background: var(--panel); border: 1px solid var(--cian-tenue);
+            border-radius: 2px;
+        }
+        [data-testid="stAlert"] {
+            background: rgba(53, 224, 242, .07);
+            border: 1px solid var(--cian-tenue); border-radius: 2px;
+        }
+        [data-testid="stCode"] pre, [data-testid="stJson"] {
+            background: var(--campo) !important;
+        }
+        [data-testid="stCode"] code { color: var(--cian) !important; }
+        [data-testid="stSpinner"] p { color: var(--cian) !important; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .radar::before, .stApp::after, .punto.activo { animation: none; }
         }
         </style>
         """,
@@ -202,8 +345,8 @@ def decodificar_payload(raw: bytes):
 def obtener_mensaje_mqtt(broker: str, port: int, topic: str, client_id: str):
     """Se suscribe al tópico y devuelve el primer mensaje recibido.
 
-    Retorna el payload (dict o str), un dict {"error": ...} si falla,
-    o {"error": "..."} si se agota el tiempo de espera.
+    Retorna el payload (dict o str) o un dict {"error": ...} si falla
+    la conexión o se agota el tiempo de espera.
     """
     recibido = threading.Event()
     resultado = {}
@@ -247,7 +390,7 @@ def obtener_mensaje_mqtt(broker: str, port: int, topic: str, client_id: str):
 def render_sidebar() -> dict:
     """Dibuja la barra lateral y devuelve la configuración elegida."""
     with st.sidebar:
-        st.subheader("⚙️ Conexión")
+        st.subheader("Parámetros de enlace")
 
         broker = st.text_input(
             "Broker MQTT",
@@ -272,7 +415,7 @@ def render_sidebar() -> dict:
             help="Identificador único para esta conexión.",
         )
 
-        st.caption("Brokers públicos para pruebas:")
+        st.caption("Brokers públicos para pruebas")
         st.code("\n".join(PUBLIC_BROKERS), language=None)
 
     return {
@@ -283,43 +426,53 @@ def render_sidebar() -> dict:
     }
 
 
+def estado_del_enlace() -> tuple[str, str]:
+    """Devuelve (clase CSS, texto) según el último resultado."""
+    data = st.session_state.sensor_data
+    if data is None:
+        return "", "Sin señal"
+    if isinstance(data, dict) and "error" in data:
+        return "error", "Falla de enlace"
+    return "activo", "Enlace activo"
+
+
 def render_encabezado(topic: str) -> None:
     st.markdown(
         """
         <div class="encabezado">
-            <div class="icono">📡</div>
-            <h1>Lector de sensor MQTT</h1>
+            <div class="radar"></div>
+            <div>
+                <h1 class="titulo">Centro de comando</h1>
+                <div class="subtitulo">Telemetría del sensor MQTT en tiempo real</div>
+            </div>
         </div>
-        <p class="subtitulo">Consulta la última lectura publicada en tu tópico.</p>
         """,
         unsafe_allow_html=True,
     )
 
-    data = st.session_state.sensor_data
-    if data is None:
-        estado = "inactivo"
-    elif isinstance(data, dict) and "error" in data:
-        estado = "error"
-    else:
-        estado = ""
-
+    clase, texto = estado_del_enlace()
     st.markdown(
-        f'<span class="chip"><span class="punto {estado}"></span>'
-        f"{escape(topic or 'sin tópico')}</span>",
+        f"""
+        <div class="enlace">
+            <span class="punto {clase}"></span>
+            <span>{escape(topic or "sin tópico")}</span>
+            <span class="estado">{texto}</span>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
 
 def render_ayuda() -> None:
-    with st.expander("ℹ️ Cómo usar la app"):
+    with st.expander("Instrucciones de operación"):
         st.markdown(
             """
-            1. Completa los datos del **broker**, **puerto** y **tópico** en la barra lateral.
+            1. Completa el **broker**, el **puerto** y el **tópico** en la barra lateral.
             2. Elige un **ID de cliente** único para esta conexión.
-            3. Pulsa **Obtener datos** para recibir el mensaje más reciente.
+            3. Pulsa **Solicitar telemetría** para recibir el mensaje más reciente.
 
             Si el sensor publica con poca frecuencia, es posible que
-            tengas que esperar a su próxima publicación.
+            tengas que esperar a su próxima transmisión.
             """
         )
 
@@ -340,7 +493,7 @@ def formatear_valor(valor) -> str:
 
 
 def render_tarjetas(data: dict) -> None:
-    """Muestra cada campo del JSON como una tarjeta de lectura."""
+    """Muestra cada campo del JSON como un panel de telemetría."""
     tarjetas = []
     for clave, valor in data.items():
         icono, unidad = meta_para(str(clave))
@@ -363,8 +516,20 @@ def render_estado_vacio() -> None:
     st.markdown(
         """
         <div class="vacio">
-            <strong>Aún no hay lecturas</strong>
-            Pulsa «Obtener datos» para conectarte y recibir el último mensaje.
+            <strong>Sin señal</strong>
+            Pulsa «Solicitar telemetría» para abrir el enlace y recibir el último mensaje.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_falla(mensaje: str) -> None:
+    st.markdown(
+        f"""
+        <div class="falla">
+            <strong>No se pudo obtener la telemetría</strong>
+            {escape(mensaje)}
         </div>
         """,
         unsafe_allow_html=True,
@@ -378,15 +543,15 @@ def render_resultados() -> None:
         render_estado_vacio()
         return
 
-    st.subheader("Última lectura")
-
     if isinstance(data, dict) and "error" in data:
-        st.error(f"No se pudo obtener el dato. {data['error']}")
+        render_falla(data["error"])
         return
+
+    st.subheader("Última telemetría")
 
     ultima = st.session_state.last_update
     if ultima:
-        st.caption(f"Actualizado el {ultima:%d/%m/%Y} a las {ultima:%H:%M:%S}")
+        st.caption(f"Recibida el {ultima:%d/%m/%Y} a las {ultima:%H:%M:%S}")
 
     if isinstance(data, dict):
         render_tarjetas(data)
@@ -407,14 +572,14 @@ def main() -> None:
 
     config = render_sidebar()
     render_encabezado(config["topic"])
-    st.write("")
     render_ayuda()
+    st.write("")
 
-    if st.button("Obtener datos", use_container_width=True, type="primary"):
+    if st.button("Solicitar telemetría", use_container_width=True, type="primary"):
         if not config["broker"] or not config["topic"]:
             st.warning("Completa el broker y el tópico para continuar.")
         else:
-            with st.spinner("Conectando al broker y esperando datos…"):
+            with st.spinner("Estableciendo enlace con el broker…"):
                 st.session_state.sensor_data = obtener_mensaje_mqtt(
                     config["broker"],
                     config["port"],
@@ -424,6 +589,7 @@ def main() -> None:
                 st.session_state.last_update = datetime.now()
             st.rerun()
 
+    st.write("")
     render_resultados()
 
 
